@@ -1,0 +1,31 @@
+filebeat.config:
+  modules:
+    path: ${path.config}/modules.d/*.yml
+    reload.enabled: false
+
+filebeat.modules:
+  - module: kafka
+    log:
+      enabled: true
+      input:
+        enabled: false
+      var:
+        hosts: ["kafka:9092"]
+        topics: ["sample-event-topic"]
+      processors:
+        - decode_json_fields:
+            fields: ["message"]
+            target: ""
+            overwrite_keys: true
+
+output.kafka:
+  hosts: ["kafka:9092"]
+  topic: "%{[fields.log_topic]}"
+  partition.round_robin:
+    reachable_only: false
+    required_acks: 1
+    compression: gzip
+    max_message_bytes: 1000000
+
+setup.kibana:
+  host: "kibana:5601"

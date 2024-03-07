@@ -1,0 +1,15 @@
+node {
+
+    stage('Clone repository'){
+        checkout scm
+    }
+
+    stage('Download kubectl'){
+        sh "kubectl version || (curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.14.2/bin/linux/amd64/kubectl && chmod +x ./kubectl && mv ./kubectl /usr/local/bin/kubectl)"
+    }
+
+    stage('Apply yaml(s) on kubernetes'){
+        sh "kubectl apply -f Deployment.yaml"
+        sh "kubectl apply -f Service.yaml"
+    }
+}

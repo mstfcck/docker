@@ -1,0 +1,26 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: azurite
+spec:
+  template:
+    metadata:
+      labels:
+        app: azurite
+    spec:
+      containers:
+      - image: mcr.microsoft.com/azure-storage/azurite:3.2.0-preview
+        name: azurite
+        ports:
+        - containerPort: 10000
+        - containerPort: 10001
+        - containerPort: 10002
+        volumeMounts:
+        - mountPath: /data
+          name: azurite-volume
+      restartPolicy: Always
+      volumes:
+        - name: azurite-volume
+          hostPath:
+            type: Directory
+            path: /home/rmx-admin/azurite-data 
