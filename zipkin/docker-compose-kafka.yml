@@ -1,0 +1,36 @@
+#
+# Copyright The OpenZipkin Authors
+# SPDX-License-Identifier: Apache-2.0
+#
+
+# This file uses the version 2 docker-compose file format, described here:
+# https://docs.docker.com/compose/compose-file/#version-2
+#
+# It extends the default configuration from docker-compose.yml to add a test
+# kafka server, which is used as a span transport.
+
+version: '2.4'
+
+services:
+  kafka:
+    image: ghcr.io/openzipkin/zipkin-kafka:${TAG:-latest}
+    container_name: kafka
+    # If using docker machine, uncomment the below and set your bootstrap
+    # server list to 192.168.99.100:19092
+    # environment:
+      # - KAFKA_ADVERTISED_HOST_NAME=192.168.99.100
+    ports:
+      # Processes on the Docker host can set bootstrap server list to localhost:19092
+      - 19092:19092
+
+  zipkin:
+    extends:
+      file: docker-compose.yml
+      service: zipkin
+    # slim doesn't include Kafka support, so switch to the larger image
+    image: ghcr.io/openzipkin/zipkin:${TAG:-latest}
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093
+    depends_on:
+      kafka:
+        condition: service_healthy

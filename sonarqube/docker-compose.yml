@@ -1,0 +1,15 @@
+  version: "2"
+  
+  services:
+
+    sonar:
+      image: sonarqube:6.7.6-community
+      restart: on-failure
+      ports:
+        - "9100:9000"
+      volumes:
+        -  ~/docker-volumes/sonarqube/sonar_conf:/opt/sonarqube/conf
+        - ~/docker-volumes/sonarqube/sonar_data:/opt/sonarqube/data
+        - ~/docker-volumes/sonarqube/sonar_logs:/opt/sonarqube/logs
+        - ~/docker-volumes/sonarqube/sonar_extensions:/opt/sonarqube/extensions
+

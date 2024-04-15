@@ -1,0 +1,23 @@
+version: '3.1'
+services:
+    jenkins-master:
+        build:
+            context: ./master
+            dockerfile: Dockerfile
+        ports:
+            - '8282:8080'
+            - '50022:50000'
+        volumes:    
+            - '~/docker-volumes/jenkins-docker/jenkins_home:/var/jenkins_home'    
+    jenkins-slave:
+        build:
+            context: ./slave
+            dockerfile: ./Dockerfile
+        restart: always
+        environment:
+            - 'JENKINS_URL=http://jenkins-master:8080'
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+        depends_on:
+            - jenkins-master
+

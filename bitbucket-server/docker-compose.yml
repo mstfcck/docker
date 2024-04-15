@@ -1,0 +1,13 @@
+version: "2"
+
+services:
+  docker-registry:
+    image: atlassian/bitbucket-server
+    restart: unless-stopped
+    ports:
+      - "7990:7990"
+      - "7999:7999"
+    volumes:
+      - ~/docker-volumes/bitbucket-server/bitbucket:/var/atlassian/application-data/bitbucket
+
+        
