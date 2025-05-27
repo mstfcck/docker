@@ -1,0 +1,28 @@
+{
+    "realm": "demo",
+    "enabled": true,
+    "clients": [
+        {
+            "clientId": "spring-api",
+            "secret": "spring-secret",
+            "protocol": "openid-connect",
+            "publicClient": false,
+            "bearerOnly": true,
+            "standardFlowEnabled": false,
+            "directAccessGrantsEnabled": false,
+            "serviceAccountsEnabled": true
+        }
+    ],
+    "users": [
+        {
+            "username": "admin",
+            "enabled": true,
+            "credentials": [
+                {
+                    "type": "password",
+                    "value": "admin"
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,188 @@
+# GENESIS
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: genesis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: genesis
+  labels:
+    app: genesis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: genesis
+  template:
+    metadata:
+      labels:
+        app: genesis
+    spec:
+      containers:
+        - name: genesis
+          image: genesis
+          env:
+            - name: APP_SETTINGS_SEGMENT_ID
+              value: SEGMENT-0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: genesis
+  namespace: genesis
+spec:
+  selector:
+    app: genesis
+  ports:
+    - name: http
+      port: 34000
+      targetPort: 34000
+---
+# ELK
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: elk
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: elk-data
+  namespace: elk
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:7.17.15
+          ports:
+            - containerPort: 9200
+          volumeMounts:
+            - name: elk-data
+              mountPath: /usr/share/elasticsearch/data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: elk
+spec:
+  selector:
+    app: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:7.17.15
+          ports:
+            - containerPort: 5601
+          volumeMounts:
+            - name: elk-data
+              mountPath: /usr/share/kibana/data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  selector:
+    app: kibana
+  ports:
+    - name: http
+      port: 5601
+      targetPort: 5601
+---
+# REDIS
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: redis
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: redis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:latest
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /usr/share/redis/data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: 6379
