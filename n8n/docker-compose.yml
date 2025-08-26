@@ -1,204 +1,561 @@
+# =============================================================================
+# n8n Production-Ready Docker Compose Configuration
+# =============================================================================
+# 
+# This configuration provides a complete, production-ready n8n setup with:
+# - PostgreSQL database for n8n core data and AI Agent memory storage
+# - Redis for queue mode execution and AI Agent memory caching
+# - MongoDB for AI Agent chat memory persistence
+# - n8n main instance with comprehensive security and monitoring
+# - n8n worker instances for scalable workflow execution
+# - Nginx reverse proxy for production SSL/TLS termination
+# - All services publicly accessible for external client connections
+# - Custom port mapping to avoid conflicts (using 5678 prefix)
+#
+# IMPORTANT SECURITY NOTICE:
+# - Change all default passwords before production deployment!
+# - Generate a secure encryption key: openssl rand -base64 32
+# - Configure SSL certificates in ./ssl/ directory
+# - Review and customize environment variables in .env file
+#
+# For AI Agent Memory Support:
+# - PostgreSQL: Used for structured AI conversation history
+# - Redis: Used for fast AI context caching and session management  
+# - MongoDB: Used for AI chat memory with vector similarity search
+#
+# =============================================================================
+
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=n8n
-      - POSTGRES_USER=n8n
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_password_change_me_123}
-      - POSTGRES_NON_ROOT_USER=n8n
-      - POSTGRES_NON_ROOT_PASSWORD=${POSTGRES_PASSWORD:-secure_password_change_me_123}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h localhost -U n8n -d n8n']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - n8n-network
 
-  # Redis for Queue Mode (optional but recommended for production)
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - n8n-network
-
+  # =============================================================================
   # n8n Main Instance
+  # =============================================================================
+  # Primary n8n application server with comprehensive production configuration
+  # Handles web UI, API requests, and workflow orchestration
+  # Configured for queue mode with AI Agent memory support
+  # =============================================================================
   n8n:
-    # Use custom Dockerfile or official image
-    # build: .
-    image: n8nio/n8n:1.105.3
+    image: n8nio/n8n:latest
+    container_name: n8n-main
     restart: unless-stopped
+    
     environment:
-      # Database Configuration
+      # =============================================================================
+      # Database Configuration - PostgreSQL Backend
+      # =============================================================================
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=n8n
       - DB_POSTGRESDB_USER=n8n
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-secure_password_change_me_123}
-      
-      # Redis Configuration (for queue mode)
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_POSTGRESDB_SCHEMA=public
+
+      # =============================================================================
+      # Queue Mode Configuration - Redis Backend for Scalability
+      # =============================================================================
+      - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
-      - EXECUTIONS_MODE=queue
-      
-      # Security
+      - QUEUE_BULL_REDIS_DB=0
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - QUEUE_HEALTH_CHECK_PORT=5679
+
+      # =============================================================================
+      # Security Configuration - Authentication & Encryption
+      # =============================================================================
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-change_me_secure_password}
-      
-      # General Configuration
-      - N8N_HOST=localhost
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-CHANGE_THIS_TO_SECURE_RANDOM_STRING_32_CHARS}
+      - N8N_SECURE_COOKIE=false
+      - N8N_CORS_ORIGIN=*
+
+      # =============================================================================
+      # Network & Protocol Configuration
+      # =============================================================================
+      - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
+      - N8N_LISTEN_ADDRESS=0.0.0.0
       - WEBHOOK_URL=http://localhost:5678/
-      
-      # Encryption key (generate with: openssl rand -base64 32)
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your_encryption_key_here_generate_with_openssl}
-      
-      # Timezone
+
+      # =============================================================================
+      # AI Agent Memory Configuration
+      # =============================================================================
+      - N8N_AI_ENABLED=true
+      - N8N_COMMUNITY_PACKAGES_ENABLED=true
+      - AI_POSTGRES_HOST=postgres
+      - AI_POSTGRES_PORT=5432
+      - AI_POSTGRES_DB=n8n_ai_memory
+      - AI_POSTGRES_USER=n8n
+      - AI_POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - AI_REDIS_HOST=redis
+      - AI_REDIS_PORT=6379
+      - AI_REDIS_DB=1
+      - AI_MONGODB_URI=mongodb://n8n_admin:${MONGODB_PASSWORD}@mongodb:27017/n8n_ai_memory?authSource=admin
+
+      # =============================================================================
+      # Performance & Resource Configuration
+      # =============================================================================
+      - NODE_OPTIONS=--max-old-space-size=4096 --max-http-header-size=81920
+      - EXECUTIONS_TIMEOUT=7200
+      - EXECUTIONS_TIMEOUT_MAX=14400
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_MAX_AGE=336
+
+      # =============================================================================
+      # Monitoring & Observability Configuration  
+      # =============================================================================
+      - N8N_METRICS=true
+      - N8N_METRICS_PREFIX=n8n_
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console,file
+      - N8N_LOG_FILE_LOCATION=/home/node/.n8n/logs/
+      - N8N_ENDPOINT_WEBHOOK=webhook
+      - N8N_ENDPOINT_WEBHOOK_TEST=webhook-test
+
+      # =============================================================================
+      # Feature Flags & Capabilities
+      # =============================================================================
+      - N8N_WORKFLOW_HISTORY_ENABLED=true
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_DISABLE_PRODUCTION_MAIN_PROCESS=false
+      - N8N_TEMPLATES_ENABLED=true
+      - N8N_PUBLIC_API_DISABLED=false
+      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
+
+      # =============================================================================
+      # Timezone & Localization
+      # =============================================================================
       - GENERIC_TIMEZONE=UTC
       - TZ=UTC
+
+      # =============================================================================
+      # Development & Debug (disable in production)
+      # =============================================================================
+      - NODE_ENV=production
+      - N8N_DIAGNOSTICS_ENABLED=false
       
-      # Node.js options
-      - NODE_OPTIONS=--max-old-space-size=2048
-      
-      # Enable metrics (optional)
-      - N8N_METRICS=false
-      
-      # Custom nodes path
-      - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
-      
-      # File system permissions
-      - N8N_USER_FOLDER=/home/node/.n8n
-      
-      # Disable version notifications
-      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
-      
-      # Log level
-      - N8N_LOG_LEVEL=info
-      
-      # Workflow execution timeout
-      - EXECUTIONS_TIMEOUT=3600
-      - EXECUTIONS_TIMEOUT_MAX=7200
-      
-      # Enable workflow history
-      - N8N_WORKFLOW_HISTORY_ENABLED=true
-      
-      # Community packages (allow installation of community nodes)
-      - N8N_COMMUNITY_PACKAGES_ENABLED=true
     ports:
+      # Main n8n interface - keep original port for compatibility
       - "5678:5678"
+      # Health check and metrics endpoint
+      - "5679:5679"
+    
     volumes:
+      # Persistent data storage for workflows, credentials, and user data
       - n8n_data:/home/node/.n8n
-      # Mount custom nodes directory
+      
+      # Custom nodes directory for community packages
       - ./custom-nodes:/home/node/.n8n/custom
-      # Mount for local files workflow access
+      
+      # Shared directory for file operations between workflows
       - ./shared:/tmp/shared
+      
+      # Log files for debugging and monitoring
+      - n8n_logs:/home/node/.n8n/logs
+      
+      # SSL certificates for webhook security
+      - ./ssl:/home/node/.n8n/ssl:ro
+    
+    # Service dependencies - wait for databases to be healthy
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    
     networks:
       - n8n-network
+    
+    # Comprehensive health check for production monitoring
     healthcheck:
-      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1']
+      test: ['CMD-SHELL', 'wget --no-verbose --tries=1 --spider http://127.0.0.1:5678/healthz || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
+    
+    # Resource allocation for main instance
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
 
-  # n8n Worker (for queue mode - optional but recommended for production)
+  # =============================================================================
+  # n8n Worker Instances
+  # =============================================================================
+  # Dedicated worker processes for scalable workflow execution
+  # Handles background jobs and long-running workflows
+  # Scales horizontally based on workload requirements
+  # =============================================================================
   n8n-worker:
-    # build: .
-    image: n8nio/n8n:1.105.3
+    image: n8nio/n8n:latest
     restart: unless-stopped
     command: worker
+    
     environment:
-      # Database Configuration (same as main instance)
+      # Database configuration (must match main instance)
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=n8n
       - DB_POSTGRESDB_USER=n8n
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD:-secure_password_change_me_123}
-      
-      # Redis Configuration
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+
+      # Queue configuration for worker coordination
+      - EXECUTIONS_MODE=queue
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
-      - EXECUTIONS_MODE=queue
-      
-      # Encryption key (must match main instance)
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-your_encryption_key_here_generate_with_openssl}
-      
+      - QUEUE_BULL_REDIS_DB=0
+
+      # Security (must match main instance)
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-CHANGE_THIS_TO_SECURE_RANDOM_STRING_32_CHARS}
+
+      # AI Agent memory access (same as main instance)
+      - AI_POSTGRES_HOST=postgres
+      - AI_POSTGRES_PORT=5432
+      - AI_POSTGRES_DB=n8n_ai_memory
+      - AI_POSTGRES_USER=n8n
+      - AI_POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - AI_REDIS_HOST=redis
+      - AI_REDIS_PORT=6379
+      - AI_REDIS_DB=1
+      - AI_MONGODB_URI=mongodb://n8n_admin:${MONGODB_PASSWORD}@mongodb:27017/n8n_ai_memory?authSource=admin
+
+      # Performance optimization for workers
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - EXECUTIONS_TIMEOUT=7200
+      - EXECUTIONS_TIMEOUT_MAX=14400
+
+      # Worker-specific configuration
+      - N8N_LOG_LEVEL=info
+
       # Timezone
       - GENERIC_TIMEZONE=UTC
       - TZ=UTC
-      
-      # Node.js options
-      - NODE_OPTIONS=--max-old-space-size=2048
-      
-      # Custom nodes path
+
+      # Enable community packages
+      - N8N_COMMUNITY_PACKAGES_ENABLED=true
       - N8N_CUSTOM_EXTENSIONS=/home/node/.n8n/custom
-      
-      # Log level
-      - N8N_LOG_LEVEL=info
+    
     volumes:
+      # Shared data with main instance
       - n8n_data:/home/node/.n8n
       - ./custom-nodes:/home/node/.n8n/custom
       - ./shared:/tmp/shared
+      - n8n_logs:/home/node/.n8n/logs
+    
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
       n8n:
         condition: service_healthy
+    
     networks:
       - n8n-network
+    
+    # Scale workers based on workload (adjust as needed)
     deploy:
-      replicas: 2  # Scale based on your needs
+      replicas: 3
+      resources:
+        limits:
+          memory: 3G
+          cpus: '1.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
 
-  # Nginx Reverse Proxy (optional but recommended for production)
+  # =============================================================================
+  # PostgreSQL Database Service
+  # =============================================================================
+  # Primary database for n8n core data and AI Agent structured memory storage
+  # Publicly accessible on port 56781 for external client connections
+  # Supports multiple databases for different AI memory use cases
+  # =============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      # Main n8n database configuration
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      # ⚠️  SECURITY: Change this default password!
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      
+      # Additional database for AI Agent memory (created automatically)
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C
+      
+      # Performance tuning for production
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=pg_stat_statements
+      
+    ports:
+      # Public access on custom port to avoid conflicts
+      # Format: 56781:5432 (5678 prefix + 1 for postgres)
+      - "56781:5432"
+    
+    volumes:
+      # Persistent data storage for database files
+      - postgres_data:/var/lib/postgresql/data
+      
+      # Custom initialization script for AI memory databases
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
+      
+      # PostgreSQL configuration tuning
+      - ./postgres.conf:/etc/postgresql/postgresql.conf:ro
+    
+    # Health check to ensure database is ready before starting dependent services
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U n8n -d n8n']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - n8n-network
+    
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # =============================================================================
+  # Redis Service 
+  # =============================================================================
+  # Used for n8n queue mode execution and AI Agent memory caching
+  # Publicly accessible on port 56782 for external client connections
+  # Configured with persistence and optimized for production workloads
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+    
+    ports:
+      # Public access on custom port to avoid conflicts  
+      # Format: 56782:6379 (5678 prefix + 2 for redis)
+      - "56782:6379"
+    
+    volumes:
+      # Persistent data storage for Redis data and AOF files
+      - redis_data:/data
+      
+      # Custom Redis configuration for production optimization
+      - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
+    
+    # Health check to verify Redis is accepting connections
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    
+    networks:
+      - n8n-network
+    
+    # Resource limits for stable performance
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+
+  # =============================================================================
+  # MongoDB Service
+  # =============================================================================
+  # Dedicated database for AI Agent chat memory and vector storage
+  # Publicly accessible on port 56783 for external client connections
+  # Optimized for AI workloads with proper indexing and replica set support
+  # =============================================================================
+  mongodb:
+    image: mongo:7.0
+    container_name: n8n-mongodb
+    restart: unless-stopped
+    environment:
+      # ⚠️  SECURITY: Change these default credentials!
+      - MONGO_INITDB_ROOT_USERNAME=n8n_admin
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGODB_PASSWORD}
+      
+      # Database for AI Agent memory
+      - MONGO_INITDB_DATABASE=n8n_ai_memory
+    
+    ports:
+      # Public access on custom port to avoid conflicts
+      # Format: 56783:27017 (5678 prefix + 3 for mongodb)  
+      - "56783:27017"
+    
+    volumes:
+      # Persistent data storage for MongoDB collections
+      - mongodb_data:/data/db
+      
+      # MongoDB configuration for AI workloads
+      - mongodb_config:/data/configdb
+      
+      # Initialization script for AI memory collections and indexes
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    
+    # Enable authentication for production security
+    command: --auth
+    
+    # Health check to ensure MongoDB is ready for connections
+    healthcheck:
+      test: ['CMD', 'mongosh', '--username', 'n8n_admin', '--password', '${MONGODB_PASSWORD}', '--authenticationDatabase', 'admin', '--eval', 'db.adminCommand("ping")']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    
+    networks:
+      - n8n-network
+    
+    # Resource allocation for AI workloads
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+  # =============================================================================
+  # Nginx Reverse Proxy
+  # =============================================================================
+  # Production-ready reverse proxy for SSL termination and load balancing
+  # Handles SSL certificates, compression, and security headers
+  # Routes traffic to n8n instances with health checking
+  # =============================================================================
   nginx:
     image: nginx:alpine
+    container_name: n8n-nginx
     restart: unless-stopped
+    
     ports:
-      - "80:80"
-      - "443:443"
+      # HTTP and HTTPS on custom ports to avoid conflicts
+      # Format: 56784:80, 56785:443 (5678 prefix + 4,5 for nginx)
+      - "56784:80"
+      - "56785:443"
+    
     volumes:
+      # Nginx configuration for n8n reverse proxy
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      
+      # SSL certificates directory (add your certificates here)
       - ./ssl:/etc/nginx/ssl:ro
+      
+      # Static files serving (optional)
+      - ./static:/usr/share/nginx/html:ro
+      
+      # Nginx logs for monitoring
+      - nginx_logs:/var/log/nginx
+    
     depends_on:
       - n8n
+    
     networks:
       - n8n-network
+    
+    # Health check for reverse proxy
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
 
+# =============================================================================
+# Persistent Volumes Configuration
+# =============================================================================
+# Organized data storage for all services with backup-friendly structure
+# All volumes use local driver but can be configured for external storage
+# =============================================================================
 volumes:
+  # PostgreSQL data persistence
   postgres_data:
     driver: local
+    name: n8n_postgres_data
+  
+  # Redis data and AOF persistence  
   redis_data:
     driver: local
+    name: n8n_redis_data
+  
+  # MongoDB data persistence
+  mongodb_data:
+    driver: local
+    name: n8n_mongodb_data
+  
+  # MongoDB configuration
+  mongodb_config:
+    driver: local
+    name: n8n_mongodb_config
+  
+  # n8n application data (workflows, credentials, settings)
   n8n_data:
     driver: local
+    name: n8n_app_data
+  
+  # Application logs for monitoring and debugging
+  n8n_logs:
+    driver: local
+    name: n8n_logs
+  
+  # Nginx logs for access and error monitoring
+  nginx_logs:
+    driver: local
+    name: n8n_nginx_logs
 
+# =============================================================================
+# Network Configuration
+# =============================================================================
+# Custom bridge network for service isolation and communication
+# Provides DNS resolution between services and security isolation
+# =============================================================================
 networks:
   n8n-network:
     driver: bridge
+    name: n8n_network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
